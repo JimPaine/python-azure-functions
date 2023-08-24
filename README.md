@@ -1,6 +1,6 @@
-# azure-functions-101
+# python-azure-functions
 
-## local tooling
+## Local Tooling
 
 [Install Function Core tools](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local?tabs=windows%2Cportal%2Cv2%2Cbash&pivots=programming-language-csharp#install-the-azure-functions-core-tools)
 
@@ -10,10 +10,7 @@ vscode extensions
 - [Python](https://marketplace.visualstudio.com/items?itemName=ms-python.python)
 - [Bicep](https://marketplace.visualstudio.com/items?itemName=ms-azuretools.vscode-bicep)
 
-
-```
-az deployment group create -g hub-func -f ./env/main.bicep -n demo0 --parameters principalIds=[]
-```
+## Further Reading
 
 [Setup and Create Function](https://learn.microsoft.com/en-us/azure/azure-functions/create-first-function-cli-python?pivots=python-mode-decorators&tabs=powershell%2Cazure-cli)
 
