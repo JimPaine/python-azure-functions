@@ -10,10 +10,13 @@ vscode extensions
 - [Python](https://marketplace.visualstudio.com/items?itemName=ms-python.python)
 - [Bicep](https://marketplace.visualstudio.com/items?itemName=ms-azuretools.vscode-bicep)
 
-```
-func new
-```
 
 ```
 az deployment group create -g hub-func -f ./env/main.bicep -n demo0 --parameters principalIds=[]
 ```
+
+[Setup and Create Function](https://learn.microsoft.com/en-us/azure/azure-functions/create-first-function-cli-python?pivots=python-mode-decorators&tabs=powershell%2Cazure-cli)
+
+[Python Event Hub Trigger](https://learn.microsoft.com/en-us/azure/azure-functions/functions-bindings-event-hubs-trigger?tabs=python-v2%2Cin-process%2Cfunctionsv2%2Cextensionv5&pivots=programming-language-python)
+
+[Python dev guide](https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference-python)

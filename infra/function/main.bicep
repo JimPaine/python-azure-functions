@@ -12,8 +12,7 @@ param ingressSubnetCIDR string
 @description('The IP block that will be used to create a subnet for downstream consumption of private endpoints.')
 param egressSubnetCIDR string
 
-@description('The IP block to deploy the storage tier to.')
-param storageSubnetCIDR string
+param storageName string
 
 var suffix = uniqueString(subscription().id, resourceGroup().id)
 
@@ -21,92 +20,30 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-04-01' existing = {
   name: vnetName
 }
 
-resource storage 'Microsoft.Storage/storageAccounts@2022-05-01' = {
-  name: 'store${suffix}'
-  location: location
-  kind: 'StorageV2'
-  sku: {
-    name: 'Standard_ZRS'
-  }
-  properties: {
-    supportsHttpsTrafficOnly: true
-    minimumTlsVersion: 'TLS1_2'
-    defaultToOAuthAuthentication: true
-    allowBlobPublicAccess: false
-    publicNetworkAccess: 'Disabled'
-  }
+resource storage 'Microsoft.Storage/storageAccounts@2023-01-01' existing = {
+  name: storageName
 }
 
-resource storageSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-04-01' = {
-  name: 'storageSubnet'
-  parent: vnet
-  properties: {
-    addressPrefix: storageSubnetCIDR
-    privateEndpointNetworkPolicies: 'Disabled'
-  }
+@description('This is the built-in Event Hub Data Receiver role. See https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles')
+resource storageContributor 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: 'b24988ac-6180-42a0-ab88-20f7382dd24c'
 }
 
-var storageEndpoints = [
-  'file'
-  'table'
-  'blob'
-  'queue'
-]
-
-resource storagePrivateEndpoints 'Microsoft.Network/privateEndpoints@2021-05-01' = [for endpoint in storageEndpoints: {
-  name: 'storage-${endpoint}'
+resource msi 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: 'func${suffix}'
   location: location
+}
+
+resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storage.id, msi.id, 'contributor')
   properties: {
-    subnet: {
-      id: storageSubnet.id
-    }
-    privateLinkServiceConnections: [
-      {
-        name: 'storage-pe'
-        properties: {
-          privateLinkServiceId: storage.id
-          groupIds: [
-            endpoint
-          ]
-        }
-      }
-    ]
+    principalId: msi.properties.principalId
+    roleDefinitionId: storageContributor.id
+    principalType: 'ServicePrincipal'
   }
-}]
-
-resource storageDnsZones 'Microsoft.Network/privateDnsZones@2018-09-01' = [for endpoint in storageEndpoints: {
-  name: 'privatelink.${endpoint}.${environment().suffixes.storage}'
-  location: 'global'
-}]
-
-resource storageDnsGoups 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2020-03-01' = [for (endpoint, index) in storageEndpoints: {
-  name: '${storage.name}-${endpoint}-private-endpoint'
-  parent: storagePrivateEndpoints[index]
-  properties: {
-    privateDnsZoneConfigs: [
-      {
-        name: 'config'
-        properties: {
-          privateDnsZoneId: storageDnsZones[index].id
-        }
-      }
-    ]
-  }
-}]
-
-resource storageNetworkLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2018-09-01' = [for (endpoint, index) in storageEndpoints: {
-  name: 'privatelink.${endpoint}.${environment().suffixes.storage}-link'
-  parent: storageDnsZones[index]
-  location: 'global'
-  properties: {
-    virtualNetwork: {
-      id: vnet.id
-    }
-    registrationEnabled: false
-  }
-}]
-
-// Subnets for Azure Function
+  scope: storage
+}
 
 resource ingress 'Microsoft.Network/virtualNetworks/subnets@2023-04-01' = {
   name: 'ingress'
@@ -115,9 +52,6 @@ resource ingress 'Microsoft.Network/virtualNetworks/subnets@2023-04-01' = {
     addressPrefix: ingressSubnetCIDR
     privateEndpointNetworkPolicies: 'Disabled'
   }
-  dependsOn: [
-    storageSubnet // ensure subnets are created sequentially
-  ]
 }
 
 resource egress 'Microsoft.Network/virtualNetworks/subnets@2023-04-01' = {
@@ -151,16 +85,22 @@ resource farm 'Microsoft.Web/serverfarms@2022-09-01' = {
     zoneRedundant: true
     targetWorkerCount: 3
     targetWorkerSizeId: 3
+    maximumElasticWorkerCount: 20
   }
 }
 
-var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${storage.listKeys().keys[0]};EndpointSuffix=core.windows.net'
-var x = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${listKeys(storage.name, storage.apiVersion).key1};EndpointSuffix=core.windows.net'
+var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${storage.listKeys().keys[0].value};EndpointSuffix=core.windows.net'
 
 resource func 'Microsoft.Web/sites@2020-12-01' = {
   name: 'func${suffix}'
   location: location
   kind: 'functionapp,linux'
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${msi.id}' : {}
+    }
+  }
   properties: {
     serverFarmId: farm.id
     httpsOnly: true
@@ -170,7 +110,6 @@ resource func 'Microsoft.Web/sites@2020-12-01' = {
       minTlsVersion: '1.2'
       use32BitWorkerProcess: false
       publicNetworkAccess: 'Disabled'
-      linuxFxVersion: 'Python|3.10'
       vnetRouteAllEnabled: true
       appSettings: [
         {
@@ -183,7 +122,7 @@ resource func 'Microsoft.Web/sites@2020-12-01' = {
         }
         {
           name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: x
+          value: storageConnectionString
         }
         {
           name: 'WEBSITE_CONTENTSHARE'
@@ -197,13 +136,14 @@ resource func 'Microsoft.Web/sites@2020-12-01' = {
           name: 'FUNCTIONS_WORKER_RUNTIME'
           value: 'python'
         }
+        {
+          name: 'WEBSITE_CONTENTOVERVNET '
+          value: '1'
+        }
       ]
     }
   }
 }
-
-output funcPrincipalId string = func.identity.principalId
-
 
 resource privateEndpoint 'Microsoft.Network/privateEndpoints@2021-05-01' = {
   name: 'func-pe'
@@ -258,3 +198,5 @@ resource dnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2021-
     ]
   }
 }
+
+output principalId string = msi.properties.principalId
