@@ -5,6 +5,8 @@ param location string = resourceGroup().location
 
 param storageName string
 
+param hubName string
+
 param egressSubnetId string
 
 var suffix = uniqueString(subscription().id, resourceGroup().id)
@@ -98,6 +100,14 @@ resource func 'Microsoft.Web/sites@2020-12-01' = {
         {
           name: 'FUNCTIONS_WORKER_RUNTIME'
           value: 'python'
+        }
+        {
+          name: 'WEBSITE_VNET_ROUTE_ALL'
+          value: '1'
+        }
+        {
+          name: 'EventHubConnection__fullyQualifiedNamespace'
+          value: '${hubName}.servicebus.windows.net'
         }
       ]
     }

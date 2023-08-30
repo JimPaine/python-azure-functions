@@ -49,6 +49,7 @@ module func 'function.bicep' = {
     egressSubnetId: networking.outputs.egressId
     location: location
     storageName: storage.outputs.name
+    hubName: 'hub${uniqueString(subscription().id, main_group.id)}'
   }
 }
 
