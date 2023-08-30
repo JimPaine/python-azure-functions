@@ -3,6 +3,7 @@
         "ms-python.python",
         "ms-vscode.vscode-node-azure-pack",
         "ms-azuretools.vscode-bicep",
-        "azurite.azurite"
+        "azurite.azurite",
+        "hediet.vscode-drawio"
     ]
 }

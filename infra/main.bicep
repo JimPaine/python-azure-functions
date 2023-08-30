@@ -1,73 +1,88 @@
-targetScope = 'resourceGroup'
+targetScope = 'subscription'
 
-@allowed(['dev', 'prod'])
-@description('When set to prod it will removed public access to the storage account, so ensure that the build agent has network connectivity.')
-param deploymentEnvironment string = 'prod'
+param name string = deployment().name
+param location string = deployment().location
 
-param location string = resourceGroup().location
-
-var suffix = uniqueString(subscription().id, resourceGroup().id)
-
-resource vnet 'Microsoft.Network/virtualNetworks@2023-04-01' = {
-  name: 'vnet'
+resource main_group 'Microsoft.Resources/resourceGroups@2022-09-01' = {
+  name: name
   location: location
-  properties: {
-    addressSpace: {
-      addressPrefixes: [
-        '10.0.0.0/16'
-      ]
-    }
+}
+
+resource networking_group 'Microsoft.Resources/resourceGroups@2022-09-01' = {
+  name: '${name}_networking'
+  location: location
+}
+
+module networking 'networking.bicep' = {
+  name: 'networking'
+  scope: networking_group
+  params: {
+    location: networking_group.location
   }
 }
 
-module storage 'storage/main.bicep' = {
+module storage 'storage.bicep' = {
   name: 'storage'
+  scope: main_group
   params: {
-    storageSubnetCIDR: '10.0.2.0/24'
-    vnetName: vnet.name
     location: location
-    deploymentEnvironment: deploymentEnvironment
   }
 }
 
-module func 'function/main.bicep' = {
-  name: 'func'
+module storage_endpoints 'privateEndpoint/main.bicep' = {
+  name: 'storage-endpoints'
+  scope: networking_group
   params: {
-    egressSubnetCIDR: '10.0.0.0/24'
-    ingressSubnetCIDR: '10.0.1.0/24'
-    vnetName: vnet.name
+    location: location
+    namePrefix: 'storage'
+    serviceId: storage.outputs.id
+    serviceType: 'storage'
+    subnetId: networking.outputs.storageId
+    vnetId: networking.outputs.vnetId
+  }
+}
+
+module func 'function.bicep' = {
+  name: 'func'
+  scope: main_group
+  params: {
+    egressSubnetId: networking.outputs.egressId
     location: location
     storageName: storage.outputs.name
   }
 }
 
-
-@description('This is the built-in Event Hub Data Receiver role. See https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles#azure-event-hubs-data-receiver')
-resource hubReader 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
-  scope: subscription()
-  name: 'b24988ac-6180-42a0-ab88-20f7382dd24c'
-}
-
-resource namespace 'Microsoft.EventHub/namespaces@2021-11-01' = {
-  name: 'hub${suffix}'
-  location: location
-
-  properties: {
-
+module function_endpoints 'privateEndpoint/main.bicep' = {
+  name: 'func-endpoints'
+  scope: networking_group
+  params: {
+    location: location
+    namePrefix: 'function'
+    serviceId: func.outputs.id
+    serviceType: 'function'
+    subnetId: networking.outputs.ingressId
+    vnetId: networking.outputs.vnetId
   }
 }
 
-resource x 'Microsoft.EventHub/namespaces/eventhubs@2021-11-01' = {
-  name: 'demo'
-  parent: namespace
+module hub 'eventhub.bicep' = {
+  name: 'hub'
+  scope: main_group
+  params: {
+    location: location
+    functionPrincipalId: func.outputs.functionPrincipalId
+  }
 }
 
-resource readers 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(namespace.id, 'func', 'reader')
-  properties: {
-    principalId: func.outputs.principalId
-    roleDefinitionId: hubReader.id
-    principalType: 'ServicePrincipal'
+module hub_endpoints 'privateEndpoint/main.bicep' = {
+  name: 'hub-endpoints'
+  scope: networking_group
+  params: {
+    location: location
+    namePrefix: 'eventhub'
+    serviceId: hub.outputs.namespaceId
+    serviceType: 'eventhub'
+    subnetId: networking.outputs.hubId
+    vnetId: networking.outputs.vnetId
   }
-  scope: namespace
 }
