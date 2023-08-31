@@ -3,10 +3,12 @@ targetScope = 'resourceGroup'
 @description('The location the resource should deployed to. Defaults to resource group location.')
 param location string = resourceGroup().location
 
+param prefix string
+
 var suffix = uniqueString(subscription().id, resourceGroup().id)
 
 resource storage 'Microsoft.Storage/storageAccounts@2022-05-01' = {
-  name: 'store${suffix}'
+  name: '${prefix}${suffix}'
   location: location
   kind: 'StorageV2'
   sku: {

@@ -21,10 +21,53 @@ module networking 'networking.bicep' = {
   }
 }
 
+module insight_storage 'storage.bicep' = {
+  name: 'insight-storage'
+  scope: main_group
+  params: {
+    prefix: 'insights'
+    location: location
+  }
+}
+
+module insight_storage_endpoints 'privateEndpoint/main.bicep' = {
+  name: 'insight-storage-endpoints'
+  scope: networking_group
+  params: {
+    location: location
+    serviceId: storage.outputs.id
+    serviceType: 'storage'
+    subnetId: networking.outputs.endpoints
+    vnetId: networking.outputs.vnetId
+  }
+}
+
+module insights 'insights.bicep' = {
+  scope: main_group
+  name: 'insights'
+  params: {
+    location: location
+    storageName: insight_storage.outputs.name
+  }
+}
+
+module insight_endpoints 'privateEndpoint/main.bicep' = {
+  name: 'insight-endpoints'
+  scope: networking_group
+  params: {
+    location: location
+    serviceId: insights.outputs.plsId
+    serviceType: 'insights'
+    subnetId: networking.outputs.endpoints
+    vnetId: networking.outputs.vnetId
+  }
+}
+
 module storage 'storage.bicep' = {
   name: 'storage'
   scope: main_group
   params: {
+    prefix: 'func'
     location: location
   }
 }
@@ -34,10 +77,9 @@ module storage_endpoints 'privateEndpoint/main.bicep' = {
   scope: networking_group
   params: {
     location: location
-    namePrefix: 'storage'
     serviceId: storage.outputs.id
     serviceType: 'storage'
-    subnetId: networking.outputs.storageId
+    subnetId: networking.outputs.endpoints
     vnetId: networking.outputs.vnetId
   }
 }
@@ -49,7 +91,8 @@ module func 'function.bicep' = {
     egressSubnetId: networking.outputs.egressId
     location: location
     storageName: storage.outputs.name
-    hubName: 'hub${uniqueString(subscription().id, main_group.id)}'
+    insightsName: insights.outputs.name
+    hubName: hub.outputs.name
   }
 }
 
@@ -58,7 +101,6 @@ module function_endpoints 'privateEndpoint/main.bicep' = {
   scope: networking_group
   params: {
     location: location
-    namePrefix: 'function'
     serviceId: func.outputs.id
     serviceType: 'function'
     subnetId: networking.outputs.ingressId
@@ -71,7 +113,6 @@ module hub 'eventhub.bicep' = {
   scope: main_group
   params: {
     location: location
-    functionPrincipalId: func.outputs.functionPrincipalId
   }
 }
 
@@ -80,10 +121,9 @@ module hub_endpoints 'privateEndpoint/main.bicep' = {
   scope: networking_group
   params: {
     location: location
-    namePrefix: 'eventhub'
     serviceId: hub.outputs.namespaceId
     serviceType: 'eventhub'
-    subnetId: networking.outputs.hubId
+    subnetId: networking.outputs.endpoints
     vnetId: networking.outputs.vnetId
   }
 }
