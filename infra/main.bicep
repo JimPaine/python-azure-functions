@@ -21,33 +21,11 @@ module networking 'networking.bicep' = {
   }
 }
 
-module insight_storage 'storage.bicep' = {
-  name: 'insight-storage'
-  scope: main_group
-  params: {
-    prefix: 'insights'
-    location: location
-  }
-}
-
-module insight_storage_endpoints 'privateEndpoint/main.bicep' = {
-  name: 'insight-storage-endpoints'
-  scope: networking_group
-  params: {
-    location: location
-    serviceId: storage.outputs.id
-    serviceType: 'storage'
-    subnetId: networking.outputs.endpoints
-    vnetId: networking.outputs.vnetId
-  }
-}
-
 module insights 'insights.bicep' = {
   scope: main_group
   name: 'insights'
   params: {
     location: location
-    storageName: insight_storage.outputs.name
   }
 }
 
