@@ -28,5 +28,13 @@ def add_function(hub: func.EventHubEvent):
         z = add(o["x"], o["y"])
         logging.info('%s + %s = %s', o["x"], o["y"], z)
 
+@math_bp.function_name(name="Add_Http")
+@math_bp.route(route="?x={x}&y={y}")
+def test_function(req: func.HttpRequest) -> func.HttpResponse:
+    x = req.params.get("x")
+    y = req.params.get("y")
+    z = add(x, y)
+    return func.HttpResponse('%s + %s = %s', x, y, z)
+
 def add(x: int, y: int) -> int:
     return x + y
