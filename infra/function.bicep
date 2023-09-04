@@ -55,8 +55,6 @@ resource metricPublisher 'Microsoft.Authorization/roleDefinitions@2022-04-01' ex
   name: '3913510d-42f4-4e42-8a64-420c390055eb'
 }
 
-// 3913510d-42f4-4e42-8a64-420c390055eb
-
 resource msi 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: 'func${suffix}'
   location: location
