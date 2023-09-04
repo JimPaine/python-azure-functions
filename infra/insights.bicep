@@ -72,7 +72,7 @@ resource pls 'microsoft.insights/privateLinkScopes@2021-07-01-preview' = {
   location: 'global'
   properties: {
     accessModeSettings: {
-      ingestionAccessMode: 'Open'
+      ingestionAccessMode: 'PrivateOnly'
       queryAccessMode: 'Open'
     }
   }
