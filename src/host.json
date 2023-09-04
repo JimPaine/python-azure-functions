@@ -1,11 +1,18 @@
 {
   "version": "2.0",
   "logging": {
+    "fileLoggingMode": "debugOnly",
+    "logLevel": {
+        "default": "Error",
+        "Host": "Error",
+        "Function": "Information",
+        "Host.Aggregator": "Trace"
+    },
     "applicationInsights": {
-      "samplingSettings": {
-        "isEnabled": true,
-        "excludedTypes": "Request"
-      }
+        "enableLiveMetrics": true,
+        "enablePerformanceCountersCollection": true,
+        "enableDependencyTracking": true,
+        "enableLiveMetricsFilters": true
     }
   },
   "extensionBundle": {

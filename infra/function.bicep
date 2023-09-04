@@ -55,6 +55,8 @@ resource metricPublisher 'Microsoft.Authorization/roleDefinitions@2022-04-01' ex
   name: '3913510d-42f4-4e42-8a64-420c390055eb'
 }
 
+// 3913510d-42f4-4e42-8a64-420c390055eb
+
 resource msi 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: 'func${suffix}'
   location: location
@@ -118,6 +120,7 @@ resource farm 'Microsoft.Web/serverfarms@2022-09-01' = {
     name: 'EP1'
     tier: 'ElasticPremium'
   }
+
   properties: {
     reserved: true
     zoneRedundant: true
@@ -139,6 +142,7 @@ resource func 'Microsoft.Web/sites@2020-12-01' = {
       '${msi.id}' : {}
     }
   }
+
   properties: {
     serverFarmId: farm.id
     httpsOnly: true
@@ -195,9 +199,34 @@ resource func 'Microsoft.Web/sites@2020-12-01' = {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
           value: insights.properties.ConnectionString
         }
+        {
+          name: 'PYTHON_ENABLE_WORKER_EXTENSIONS'
+          value: '1'
+        }
       ]
     }
   }
+}
+
+resource diagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'diagnosticSettings'
+  properties: {
+    workspaceId: insights.properties.WorkspaceResourceId
+    metrics: [
+      {
+        category: 'AllMetrics'
+        timeGrain: null
+        enabled: true
+      }
+    ]
+    logs: [
+      {
+        category: 'FunctionAppLogs'
+        enabled: true
+      }
+    ]
+  }
+  scope: func
 }
 
 output id string = func.id

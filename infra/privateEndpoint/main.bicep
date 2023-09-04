@@ -3,6 +3,8 @@ targetScope = 'resourceGroup'
 @description('The location the resource should be deployed to. Defaults to resource group location.')
 param location string = resourceGroup().location
 
+param prefix string
+
 param serviceId string
 
 param vnetId string
@@ -42,7 +44,7 @@ var zones = serviceType == 'function' || serviceType == 'appservice' ? [
 ]: []
 
 resource endpoints 'Microsoft.Network/privateEndpoints@2021-05-01' = [for groupId in groupIds: {
-  name: '${serviceType}-${groupId}-pe'
+  name: '${prefix}-${serviceType}-${groupId}-pe'
   location: location
   properties: {
     subnet: {
@@ -68,7 +70,7 @@ resource dnsZones 'Microsoft.Network/privateDnsZones@2018-09-01' = [for zone in 
 }]
 
 resource dnsGoups 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2020-03-01' = [for (groupId, index) in groupIds: {
-  name: '${serviceType}-${groupId}-group'
+  name: '${prefix}-${serviceType}-${groupId}-group'
   parent: endpoints[index]
   properties: {
     privateDnsZoneConfigs: [for (zone, i) in zones: {

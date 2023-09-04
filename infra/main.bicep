@@ -2,6 +2,11 @@ targetScope = 'subscription'
 
 param name string = deployment().name
 param location string = deployment().location
+@description('Disable public access to the storage account used by the function app. If disabled, ensure that deployment agent has network access to the storage account.')
+param disableFunctionAppStoragePublicAccess bool = true
+
+@description('The "Diagnostic Services Trusted Storage Access" Magic APP object ID')
+param diagnosticServicesTrustedStorageAccessId string
 
 resource main_group 'Microsoft.Resources/resourceGroups@2022-09-01' = {
   name: name
@@ -21,10 +26,26 @@ module networking 'networking.bicep' = {
   }
 }
 
+// no private endpoints needed as this account is used
+// by app insights and the magic app due to no msi
+// support on app insights all access disabled by
+// default and traffic is through backbone
+module insights_storage 'storage.bicep' = {
+  name: 'insights-storage'
+  scope: main_group
+  params: {
+    prefix: 'insights'
+    location: location
+    allowMicrosoftTrustedServices: true
+  }
+}
+
 module insights 'insights.bicep' = {
   scope: main_group
   name: 'insights'
   params: {
+    diagnosticServicesTrustedStorageAccessId: diagnosticServicesTrustedStorageAccessId
+    storageName: insights_storage.outputs.name
     location: location
   }
 }
@@ -33,6 +54,7 @@ module insight_endpoints 'privateEndpoint/main.bicep' = {
   name: 'insight-endpoints'
   scope: networking_group
   params: {
+    prefix: 'insights'
     location: location
     serviceId: insights.outputs.plsId
     serviceType: 'insights'
@@ -47,6 +69,7 @@ module storage 'storage.bicep' = {
   params: {
     prefix: 'func'
     location: location
+    publicNetworkAccess: disableFunctionAppStoragePublicAccess ? 'Disabled' : 'Enabled'
   }
 }
 
@@ -54,6 +77,7 @@ module storage_endpoints 'privateEndpoint/main.bicep' = {
   name: 'storage-endpoints'
   scope: networking_group
   params: {
+    prefix: 'func'
     location: location
     serviceId: storage.outputs.id
     serviceType: 'storage'
@@ -78,6 +102,7 @@ module function_endpoints 'privateEndpoint/main.bicep' = {
   name: 'func-endpoints'
   scope: networking_group
   params: {
+    prefix: 'func'
     location: location
     serviceId: func.outputs.id
     serviceType: 'function'
@@ -91,6 +116,7 @@ module hub 'eventhub.bicep' = {
   scope: main_group
   params: {
     location: location
+    worspaceName: insights.outputs.workspaceName
   }
 }
 
@@ -98,6 +124,7 @@ module hub_endpoints 'privateEndpoint/main.bicep' = {
   name: 'hub-endpoints'
   scope: networking_group
   params: {
+    prefix: 'hub'
     location: location
     serviceId: hub.outputs.namespaceId
     serviceType: 'eventhub'
