@@ -43,6 +43,7 @@ var zones = serviceType == 'function' || serviceType == 'appservice' ? [
   'privatelink.agentsvc.azure-automation.net'
 ]: []
 
+@batchSize(1)
 resource endpoints 'Microsoft.Network/privateEndpoints@2021-05-01' = [for groupId in groupIds: {
   name: '${prefix}-${serviceType}-${groupId}-pe'
   location: location

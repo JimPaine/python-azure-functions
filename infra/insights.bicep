@@ -46,7 +46,9 @@ resource customStorageLink 'microsoft.insights/components/linkedStorageAccounts@
     linkedStorageAccount: storage.id
   }
   dependsOn: [
-    storageBlobContributorAssignment // ensure the link happens once the magic app has role assigned
+    // ensure the link happens once the magic app has role assigned
+    storageBlobContributorAssignment
+    insights_scope
   ]
 }
 
