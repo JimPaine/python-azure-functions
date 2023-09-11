@@ -3,12 +3,15 @@
   "logging": {
     "fileLoggingMode": "debugOnly",
     "logLevel": {
-        "default": "Error",
-        "Host": "Error",
+        "default": "Information",
+        "Host": "Information",
         "Function": "Information",
-        "Host.Aggregator": "Trace"
+        "Host.Aggregator": "Information"
     },
     "applicationInsights": {
+        "samplingSettings": {
+            "isEnabled": false
+        },
         "enableLiveMetrics": true,
         "enablePerformanceCountersCollection": true,
         "enableDependencyTracking": true,
