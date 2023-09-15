@@ -37,10 +37,10 @@ resource storageKeyOp 'Microsoft.Authorization/roleDefinitions@2022-04-01' exist
   name: '81a9662b-bebf-436f-a333-f67b29880f12'
 }
 
-@description('This is the built-in Blob data contributor role. See https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles')
-resource storageBlobContributor 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+@description('This is the built-in Blob data owner role. See https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles')
+resource storageBlobOwner 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
   scope: subscription()
-  name: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+  name: 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
 }
 
 @description('This is the built-in reader and data access role. See https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles')
@@ -70,11 +70,11 @@ resource storageKeyOpAssignment 'Microsoft.Authorization/roleAssignments@2022-04
   scope: storage
 }
 
-resource storageBlobContributorAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storage.id, msi.id, 'storageBlobContributor')
+resource storageBlobOwnerAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storage.id, msi.id, 'storageBlobOwner')
   properties: {
     principalId: msi.properties.principalId
-    roleDefinitionId: storageBlobContributor.id
+    roleDefinitionId: storageBlobOwner.id
     principalType: 'ServicePrincipal'
   }
   scope: storage
@@ -128,9 +128,20 @@ resource farm 'Microsoft.Web/serverfarms@2022-09-01' = {
   }
 }
 
-var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${storage.listKeys().keys[0].value};EndpointSuffix=core.windows.net'
+resource blob 'Microsoft.Storage/storageAccounts/blobServices@2023-01-01' = {
+  name: 'default'
+  parent: storage
+}
 
-resource func 'Microsoft.Web/sites@2020-12-01' = {
+resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
+  name: 'deployment'
+  parent: blob
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
+resource func 'Microsoft.Web/sites@2022-09-01' = {
   name: 'func${suffix}'
   location: location
   kind: 'functionapp,linux'
@@ -145,6 +156,10 @@ resource func 'Microsoft.Web/sites@2020-12-01' = {
     serverFarmId: farm.id
     httpsOnly: true
     virtualNetworkSubnetId: egressSubnetId
+    vnetRouteAllEnabled: true
+    vnetContentShareEnabled: true
+    vnetImagePullEnabled: true
+
     siteConfig: {
       linuxFxVersion: 'Python|3.10'
       ftpsState: 'Disabled'
@@ -152,22 +167,23 @@ resource func 'Microsoft.Web/sites@2020-12-01' = {
       use32BitWorkerProcess: false
       publicNetworkAccess: 'Enabled'
       vnetRouteAllEnabled: true
+
       appSettings: [
         {
-          name: 'AzureWebJobsDashboard'
-          value: storageConnectionString
+          name: 'AzureWebJobsStorage__blobServiceUri'
+          value: storage.properties.primaryEndpoints.blob
         }
         {
-          name: 'AzureWebJobsStorage'
-          value: storageConnectionString
+          name: 'AzureWebJobsStorage__credential'
+          value: 'managedidentity'
         }
         {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: storageConnectionString
+          name: 'AzureWebJobsStorage__tenantId'
+          value: msi.properties.tenantId
         }
         {
-          name: 'WEBSITE_CONTENTSHARE'
-          value: toLower(storage.name)
+          name: 'AzureWebJobsStorage__clientId'
+          value: msi.properties.clientId
         }
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
@@ -200,6 +216,22 @@ resource func 'Microsoft.Web/sites@2020-12-01' = {
         {
           name: 'PYTHON_ENABLE_WORKER_EXTENSIONS'
           value: '1'
+        }
+        {
+          name: 'WEBSITE_RUN_FROM_PACKAGE'
+          value: '${storage.properties.primaryEndpoints.blob}${deploymentContainer.name}/package.zip'
+        }
+        {
+          name: 'WEBSITE_RUN_FROM_PACKAGE_BLOB_MI_RESOURCE_ID'
+          value: msi.id
+        }
+        {
+          name: 'ENABLE_ORYX_BUILD'
+          value: 'true'
+        }
+        {
+          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+          value: 'true'
         }
       ]
     }
