@@ -31,8 +31,8 @@ def add_function(hub: func.EventHubEvent):
 @math_bp.function_name(name="AddHttp")
 @math_bp.route(route="")
 def test_function(req: func.HttpRequest) -> func.HttpResponse:
-    x = req.params.get("x")
-    y = req.params.get("y")
+    x = int(req.params.get("x"))
+    y = int(req.params.get("y"))
     z = add(x, y)
     return func.HttpResponse(f"{x}+{y}={z}")
 

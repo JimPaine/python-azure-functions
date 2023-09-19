@@ -95,6 +95,7 @@ module func 'function.bicep' = {
     storageName: storage.outputs.name
     insightsName: insights.outputs.name
     hubName: hub.outputs.name
+    acrName: acr.outputs.name
   }
 }
 
@@ -128,6 +129,28 @@ module hub_endpoints 'privateEndpoint/main.bicep' = {
     location: location
     serviceId: hub.outputs.namespaceId
     serviceType: 'eventhub'
+    subnetId: networking.outputs.endpoints
+    vnetId: networking.outputs.vnetId
+  }
+}
+
+module acr 'acr.bicep' = {
+  name: 'acr'
+  scope: main_group
+  params: {
+    location: location
+    publicNetworkAccess: 'Enabled'
+  }
+}
+
+module acr_endpoints 'privateEndpoint/main.bicep' = {
+  name: 'acr-endpoints'
+  scope: networking_group
+  params: {
+    prefix: 'acr'
+    location: location
+    serviceId: acr.outputs.id
+    serviceType: 'acr'
     subnetId: networking.outputs.endpoints
     vnetId: networking.outputs.vnetId
   }

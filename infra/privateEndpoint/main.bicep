@@ -11,7 +11,7 @@ param vnetId string
 
 param subnetId string
 
-@allowed(['function', 'appservice', 'storage', 'eventhub', 'insights'])
+@allowed(['function', 'appservice', 'storage', 'eventhub', 'insights', 'acr'])
 param serviceType string
 
 var groupIds = serviceType == 'function' || serviceType == 'appservice' ? [
@@ -25,7 +25,9 @@ var groupIds = serviceType == 'function' || serviceType == 'appservice' ? [
   'namespace'
 ] : serviceType == 'insights' ? [
   'azuremonitor'
-]: []
+] : serviceType == 'acr' ? [
+  'registry'
+] : []
 
 var zones = serviceType == 'function' || serviceType == 'appservice' ? [
   'privatelink.azurewebsites.net'
@@ -41,7 +43,9 @@ var zones = serviceType == 'function' || serviceType == 'appservice' ? [
   'privatelink.oms.opinsights.azure.com'
   'privatelink.ods.opinsights.azure.com'
   'privatelink.agentsvc.azure-automation.net'
-]: []
+] : serviceType == 'acr' ? [
+  'privatelink.azurecr.io'
+] : []
 
 @batchSize(1)
 resource endpoints 'Microsoft.Network/privateEndpoints@2021-05-01' = [for groupId in groupIds: {

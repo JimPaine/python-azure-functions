@@ -9,6 +9,8 @@ param insightsName string
 
 param hubName string
 
+param acrName string
+
 param egressSubnetId string
 
 var suffix = uniqueString(subscription().id, resourceGroup().id)
@@ -23,6 +25,10 @@ resource insights 'Microsoft.Insights/components@2020-02-02' existing = {
 
 resource hub 'Microsoft.EventHub/namespaces@2022-10-01-preview' existing = {
   name: hubName
+}
+
+resource acr 'Microsoft.ContainerRegistry/registries@2023-08-01-preview' existing = {
+  name: acrName
 }
 
 @description('This is the built-in Event Hub Data Receiver role. See https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles')
@@ -53,6 +59,12 @@ resource readerDataAccess 'Microsoft.Authorization/roleDefinitions@2022-04-01' e
 resource metricPublisher 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
   scope: subscription()
   name: '3913510d-42f4-4e42-8a64-420c390055eb'
+}
+
+@description('This is the built-in ACR Pull role. See https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles')
+resource acrPull 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 }
 
 resource msi 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
@@ -110,6 +122,16 @@ resource hubRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' 
   scope: hub
 }
 
+resource acrRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(acr.id, msi.id, 'pull')
+  properties: {
+    principalId: msi.properties.principalId
+    roleDefinitionId: acrPull.id
+    principalType: 'ServicePrincipal'
+  }
+  scope: acr
+}
+
 resource farm 'Microsoft.Web/serverfarms@2022-09-01' = {
   name: 'farm'
   location: location
@@ -133,14 +155,6 @@ resource blob 'Microsoft.Storage/storageAccounts/blobServices@2023-01-01' = {
   parent: storage
 }
 
-resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
-  name: 'deployment'
-  parent: blob
-  properties: {
-    publicAccess: 'None'
-  }
-}
-
 resource func 'Microsoft.Web/sites@2022-09-01' = {
   name: 'func${suffix}'
   location: location
@@ -162,12 +176,16 @@ resource func 'Microsoft.Web/sites@2022-09-01' = {
 
     siteConfig: {
       linuxFxVersion: 'Python|3.10'
+      acrUseManagedIdentityCreds: true
+      acrUserManagedIdentityID: msi.properties.clientId
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       use32BitWorkerProcess: false
       publicNetworkAccess: 'Enabled'
       vnetRouteAllEnabled: true
-
+      httpLoggingEnabled: true
+      logsDirectorySizeLimit: 35
+      healthCheckPath: '/api/health'
       appSettings: [
         {
           name: 'AzureWebJobsStorage__blobServiceUri'
@@ -216,22 +234,6 @@ resource func 'Microsoft.Web/sites@2022-09-01' = {
         {
           name: 'PYTHON_ENABLE_WORKER_EXTENSIONS'
           value: '1'
-        }
-        {
-          name: 'WEBSITE_RUN_FROM_PACKAGE'
-          value: '${storage.properties.primaryEndpoints.blob}${deploymentContainer.name}/package.zip'
-        }
-        {
-          name: 'WEBSITE_RUN_FROM_PACKAGE_BLOB_MI_RESOURCE_ID'
-          value: msi.id
-        }
-        {
-          name: 'ENABLE_ORYX_BUILD'
-          value: 'true'
-        }
-        {
-          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
-          value: 'true'
         }
       ]
     }

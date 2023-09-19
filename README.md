@@ -20,13 +20,19 @@ Key features shown in this repo.
 Deploy infra
 
 ```
-az deployment sub create -n pyfunc -l uksouth -f ./infra/main.bicep
+az deployment sub create -n pyfunc -l uksouth -f ./infra/main.bicep --parameters diagnosticServicesTrustedStorageAccessId=<app object ID> disableFunctionAppStoragePublicAccess=false
 ```
+
+> Ensure the build agent has the ACR Push role assigned to it's identity.
 
 Deploy app
 ```
 cd ./src
-func azure functionapp publish <function app name>
+func init --docker-only
+az acr login -n <acr fqdn>
+docker build -t <acr fqdn>/pyfunc:<tag> .
+docker push <acr fqdn>/pyfunc:<tag>
+az functionapp config container set -g <group name> -n <func name> -i <acr fqdn>/pyfunc:<tag>
 ```
 
 ## Local Tooling
