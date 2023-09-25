@@ -5,16 +5,27 @@ param location string = resourceGroup().location
 
 param storageName string
 
+param storageFilesName string
+
 param insightsName string
 
 param hubName string
 
+param vaultName string
+
 param egressSubnetId string
+
+@allowed(['Enabled','Disabled'])
+param publicNetworkAccess string = 'Disabled'
 
 var suffix = uniqueString(subscription().id, resourceGroup().id)
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-01-01' existing = {
   name: storageName
+}
+
+resource storageFiles 'Microsoft.Storage/storageAccounts@2023-01-01' existing = {
+  name: storageFilesName
 }
 
 resource insights 'Microsoft.Insights/components@2020-02-02' existing = {
@@ -23,6 +34,10 @@ resource insights 'Microsoft.Insights/components@2020-02-02' existing = {
 
 resource hub 'Microsoft.EventHub/namespaces@2022-10-01-preview' existing = {
   name: hubName
+}
+
+resource vault 'Microsoft.KeyVault/vaults@2023-02-01' existing = {
+  name: vaultName
 }
 
 @description('This is the built-in Event Hub Data Receiver role. See https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles')
@@ -53,6 +68,12 @@ resource readerDataAccess 'Microsoft.Authorization/roleDefinitions@2022-04-01' e
 resource metricPublisher 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
   scope: subscription()
   name: '3913510d-42f4-4e42-8a64-420c390055eb'
+}
+
+@description('This is the built-in Secret User role. See https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles')
+resource secretReader 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  scope: subscription()
+  name: '4633458b-17de-408a-b874-0445c86b69e6'
 }
 
 resource msi 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
@@ -110,6 +131,16 @@ resource hubRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' 
   scope: hub
 }
 
+resource secretReaderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(vault.id, msi.id, 'reader')
+  properties: {
+    principalId: msi.properties.principalId
+    roleDefinitionId: secretReader.id
+    principalType: 'ServicePrincipal'
+  }
+  scope: vault
+}
+
 resource farm 'Microsoft.Web/serverfarms@2022-09-01' = {
   name: 'farm'
   location: location
@@ -128,9 +159,29 @@ resource farm 'Microsoft.Web/serverfarms@2022-09-01' = {
   }
 }
 
-var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${storage.listKeys().keys[0].value};EndpointSuffix=core.windows.net'
+resource filesConnectionString 'Microsoft.KeyVault/vaults/secrets@2023-02-01' = {
+  name: 'filesConnectionString'
+  parent: vault
+  properties: {
+    value: 'DefaultEndpointsProtocol=https;AccountName=${storageFiles.name};AccountKey=${storageFiles.listKeys().keys[0].value};EndpointSuffix=core.windows.net'
+  }
+}
 
-resource func 'Microsoft.Web/sites@2020-12-01' = {
+resource files 'Microsoft.Storage/storageAccounts/fileServices@2023-01-01' = {
+  name: 'default'
+  parent: storageFiles
+}
+
+resource share 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-01-01' = {
+  name: toLower('func${suffix}')
+  parent: files
+  properties: {
+    accessTier: 'Hot'
+    enabledProtocols: 'SMB'
+  }
+}
+
+resource func 'Microsoft.Web/sites@2022-09-01' = {
   name: 'func${suffix}'
   location: location
   kind: 'functionapp,linux'
@@ -145,29 +196,44 @@ resource func 'Microsoft.Web/sites@2020-12-01' = {
     serverFarmId: farm.id
     httpsOnly: true
     virtualNetworkSubnetId: egressSubnetId
+    vnetRouteAllEnabled: true
+    keyVaultReferenceIdentity: msi.id
+    publicNetworkAccess: publicNetworkAccess
+
     siteConfig: {
       linuxFxVersion: 'Python|3.10'
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       use32BitWorkerProcess: false
-      publicNetworkAccess: 'Enabled'
-      vnetRouteAllEnabled: true
       appSettings: [
         {
-          name: 'AzureWebJobsDashboard'
-          value: storageConnectionString
-        }
-        {
-          name: 'AzureWebJobsStorage'
-          value: storageConnectionString
-        }
-        {
           name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: storageConnectionString
+          value: '@Microsoft.KeyVault(SecretUri=${filesConnectionString.properties.secretUri})'
+        }
+        {
+          name: 'WEBSITE_SKIP_CONTENTSHARE_VALIDATION'
+          // https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references?tabs=azure-cli#considerations-for-azure-files-mounting
+          value: '1' // skip validation when using key vault reference
         }
         {
           name: 'WEBSITE_CONTENTSHARE'
-          value: toLower(storage.name)
+          value: share.name
+        }
+        {
+          name: 'AzureWebJobsStorage__blobServiceUri'
+          value: storage.properties.primaryEndpoints.blob
+        }
+        {
+          name: 'AzureWebJobsStorage__credential'
+          value: 'managedidentity'
+        }
+        {
+          name: 'AzureWebJobsStorage__tenantId'
+          value: msi.properties.tenantId
+        }
+        {
+          name: 'AzureWebJobsStorage__clientId'
+          value: msi.properties.clientId
         }
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
@@ -176,10 +242,6 @@ resource func 'Microsoft.Web/sites@2020-12-01' = {
         {
           name: 'FUNCTIONS_WORKER_RUNTIME'
           value: 'python'
-        }
-        {
-          name: 'WEBSITE_VNET_ROUTE_ALL'
-          value: '1'
         }
         {
           name: 'EventHubConnection__fullyQualifiedNamespace'
@@ -200,6 +262,14 @@ resource func 'Microsoft.Web/sites@2020-12-01' = {
         {
           name: 'PYTHON_ENABLE_WORKER_EXTENSIONS'
           value: '1'
+        }
+        {
+          name: 'ENABLE_ORYX_BUILD'
+          value: 'true'
+        }
+        {
+          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+          value: 'true'
         }
       ]
     }
@@ -228,4 +298,5 @@ resource diagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-pr
 }
 
 output id string = func.id
+output name string = func.name
 output functionPrincipalId string = msi.properties.principalId
