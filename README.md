@@ -2,7 +2,8 @@
 
 A repo that demostrates how to build out an environment with a focus on private connectivity for a python function with an Event hub trigger.
 
-Key features shown in this repo.
+## Key features shown in this repo.
+
 - python Event Hub Trigger
 - mocking of event hub in unit test
 - Bicep to create
@@ -14,16 +15,31 @@ Key features shown in this repo.
     - role assignments
     - vnet and subnets
     - private endpoints
+    - key vault references
 
 > The function and the storage account also have public access enabled to allow for deploying and testing from a local machine. This should be disabled in a real world environment and the use of a self hosted runner that has network connectivity.
 
-Deploy infra
+## Deploy infra
+
+> You will need to find the ID for the "Diagnostic Services Trusted Storage Access" app which is deployed in your tenant to allow private connectivity from app insights into a storage account.
 
 ```
-az deployment sub create -n pyfunc -l uksouth -f ./infra/main.bicep
+az deployment sub create -n pyfunc8 -l uksouth -f ./infra/main.bicep --parameters diagnosticServicesTrustedStorageAccessId=<magic app id> disablePublicAccess=false deploymentAgentPrincipalId=$(az ad signed-in-user show --query id -o tsv) deploymentAgentPrincipalType=User
 ```
 
-Deploy app
+Parameters
+
+| Name                                     | Type         | Default                        | Description                                                                |
+| ---------------------------------------- | ------------ | ------------------------------ | -------------------------------------------------------------------------- |
+| name                                     | string       | The name of the deployment     | The name used for the resource groups                                      |
+| location                                 | string       | The location of the deployment | The location to deploy all resources                                       |
+| diagnosticServicesTrustedStorageAccessId | object ID    |                                | The object ID of the special app for Azure Monitor in a Private Link Scope |
+| deploymentAgentPrincipalId               | principal ID |                                | The principal ID of the user of service running the deployment             |
+| deploymentAgentPrincipalType             | string       | ServicePrincipal               | The principal type of the user or service doing the deployment             |
+
+
+## Deploy app
+
 ```
 cd ./src
 func azure functionapp publish <function app name>
